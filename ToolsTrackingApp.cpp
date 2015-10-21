@@ -10,7 +10,7 @@ ToolsTrackingApp::ToolsTrackingApp() :toolbox(), trackedPoints(), capture(), fra
 {
 
 	// Get the moving foreground properly
-	pMOG = new BackgroundSubtractorMOG2(20, 200, false);
+	pMOG = new BackgroundSubtractorMOG2(0, 250, false);
 	element[0] = getStructuringElement(MORPH_CROSS, Size(5, 5), Point(0, 0));
 	element[1] = getStructuringElement(MORPH_ELLIPSE, Size(8, 8), Point(0, 0));
 	element[2] = getStructuringElement(MORPH_ELLIPSE, Size(3, 3), Point(0, 0));
@@ -75,6 +75,128 @@ int ToolsTrackingApp::init(const char* filename)
 }
 
 
+void ToolsTrackingApp::ring_mask(const Mat& mask_ring,  vector<Rect> &roi,	vector<Point> &centre, vector<double> &radius, bool first)
+{
+	vector<vector<Point> > contours_ring;
+	Mat initial_ring_mask = mask_ring.clone();
+	vector<Vec4i> hierarchy_ring;
+
+	imshow("Initial mask", initial_ring_mask);
+	//imwrite("image.jpg", initial_ring_mask);
+	///**
+	//Module to process the fgMaskRing
+	//**/
+
+	findContours(initial_ring_mask, contours_ring, hierarchy_ring, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, Point(0, 0));
+	unsigned int No_of_ring = contours_ring.size();
+	//cout << "No of Rings -> " << No_of_ring << endl;
+
+
+	Mat draw_rings = Mat::zeros(initial_ring_mask.rows, initial_ring_mask.cols, CV_8UC1);
+
+	//std::ostringstream os;
+
+	for (int i = contours_ring.size() - 1; i >= 0; i--)
+	{
+		ContourFeature cFeat(contours_ring[i]);
+		cv::Point centre = cFeat.getCentre(); centre.y += 10;
+		/*if (centre.x < 20 && centre.y < 20)
+		{
+			contours_ring.erase(contours_ring.begin() + i);
+		}*/
+
+		if (contours_ring[i].size() < 35)
+		{
+			contours_ring.erase(contours_ring.begin() + i);
+		}
+	}
+	vector<Mat> subregions;
+	//vector<Point> centre;
+	vector<Rect> initial_roi;
+	//vector<double> radius;
+	for (int i = 0; i < contours_ring.size(); i++)
+	{
+		ContourFeature cFeat(contours_ring[i]);
+		centre.push_back(cFeat.getCentre()); //centre.y += 10;
+
+		// Get bounding box for contour
+
+		initial_roi.push_back(boundingRect(contours_ring[i])); // This is a OpenCV function
+
+		radius.push_back(sqrt(pow(boundingRect(contours_ring[i]).width, 2.0) + pow(boundingRect(contours_ring[i]).height, 2.0)) / 2);
+		//double area = cFeat.getArea();
+		//double length = sqrt(area);
+		drawContours(draw_rings, contours_ring, i, Scalar(255, 0, 0), CV_FILLED);
+		Mat contourRegion, imageROI;
+		Mat new_mask(draw_rings.size(), CV_8UC1, Scalar::all(0));
+		//Mat imageROI(draw_rings.size(), CV_8UC1, Scalar::all(0));
+		imageROI = new_mask.clone(); // 'image' is the image you used to compute the contours.
+		////ring_mask = imageROI(roi).setTo(Scalar(255));
+		imageROI(initial_roi[i]).setTo(Scalar::all(255));
+		new_mask = draw_rings & imageROI;
+
+		////imageROI= ring_mask(contourRegion);
+
+		//// Mat maskROI = mask(roi); // Save this if you want a mask for pixels within the contour in contourRegion. 
+
+		//// Store contourRegion. contourRegion is a rectangular image the size of the bounding rect for the contour 
+		//// BUT only pixels within the contour is visible. All other pixels are set to (0,0,0).
+
+
+		subregions.push_back(new_mask);
+
+		//RotatedRect rRect = RotatedRect(centre, Size2f(length+12+i,length-10-i), 30);
+		//Point2f vertices[4];
+		//rRect.points(vertices);
+		////for (int i = 0; i < 4; i++)
+		//	//line(draw_rings, vertices[i], vertices[(i+1)%4], Scalar(255,255,0));
+		//Rect brect = rRect.boundingRect();
+		//rectangle(draw_rings, brect, Scalar(0,255,0));
+
+		//os << "Centre ->( " << centre[i].x << "," << centre[i].y << ")" << endl;
+		//putText(draw_rings, os.str(), centre[i], 0, 0.4, cv::Scalar(0, 0, 255), 1, 8, false);
+		//os.str("");
+
+		//cvDestroyWindow("rectangles");
+
+	}
+	
+	//vector<Mat> total_ring_masks;
+
+	if (first == true)
+	{
+		for (int j = 0; j < 6; j ++)
+		{
+			if( j == 2 )
+			{
+
+				//total_ring_masks.push_back(subregions[j + 1]);
+				roi.push_back(initial_roi[j + 1]);
+				//rings.push_back(ring);
+			}
+			else if( j == 3 )
+			{
+				//total_ring_masks.push_back(subregions[j - 1]);
+				roi.push_back(initial_roi[j - 1]);
+				//rings.push_back(ring);
+			}
+			else
+			{
+				//total_ring_masks.push_back(subregions[j]);
+				roi.push_back(initial_roi[j]);
+				//rings.push_back(ring);
+			}
+		}
+	}
+	else
+	{
+		//total_ring_masks = subregions;
+		roi = initial_roi;
+	}
+	//return total_ring_masks;
+}
+
+
 bool ToolsTrackingApp::isNotAContour(ContourFeature& cf, int hierarchy) 
 {
 	if (cf.getArea() > 100000)
@@ -93,11 +215,13 @@ bool ToolsTrackingApp::isNotARing(ContourFeature& cf, int hierarchy)
 }
 
 
+
+
 void ToolsTrackingApp::run() 
 {
 	//initialize 
 	Mat test1;
-	vector <Ring> rings;
+	
 	vector<vector<Point> > contours;
 	vector<vector<Point> > contours_ring;
 	vector<Point> poly;
@@ -140,131 +264,98 @@ void ToolsTrackingApp::run()
 		vector<Point> contour_tool;
 
 		int max_y = -1;
-		bool tool_present = segmentation_tool(frame, contour_tool, &max_y);
+		Mat mask_segmentation = Mat::zeros(frame.rows, frame.cols, CV_8UC1);
+		bool tool_present = segmentation_tool(frame, contour_tool, &max_y, mask_segmentation);
 		Mat mask_tool = Mat::zeros(frame.rows, frame.cols, CV_8UC3);
 
 		Mat mask_rings = Mat::zeros(frame.rows, frame.cols, CV_8UC1);
 
 		// Pass tool contour to the ring analyzer;
 		segmentation_ring(contour_tool, mask_rings);
-		//imshow("Rings", mask_rings);
+		imshow("Mask outside", mask_segmentation);
 
 		count++;
 
+		// Get the first frame mask 
+		
+		//Initailization for the ring masks at start
+
+
+
+
 		if (count == 1)
 		{
-			Mat initial_ring_mask = mask_rings.clone();
-
-
-			//imshow("Initial mask", initial_ring_mask);
-			//imwrite("image.jpg", initial_ring_mask);
-			///**
-			//Module to process the fgMaskRing
-			//**/
-
-			findContours(initial_ring_mask, contours_ring, hierarchy_ring, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, Point(0, 0));
-			unsigned int No_of_ring = contours_ring.size();
-			//cout << "No of Rings -> " << No_of_ring << endl;
-
-
-			Mat draw_rings = Mat::zeros(frame.rows, frame.cols, CV_8UC1);
-
-			std::ostringstream os;
-
-			for (int i = contours_ring.size() - 1; i >= 0; i--)
-			{
-				ContourFeature cFeat(contours_ring[i]);
-				cv::Point centre = cFeat.getCentre(); centre.y += 10;
-				if (centre.x < 20 && centre.y < 20)
-				{
-					contours_ring.erase(contours_ring.begin() + i);
-				}
-			}
-			vector<Mat> subregions;
+			vector<Mat> total_ring_mask;
 			vector<Point> centre;
-			vector<Rect> roi;
-			for (int i = 0; i <  contours_ring.size(); i++)
+			vector<double> radius;
+			vector<Rect>roi;
+			bool first = true;
+			ring_mask(mask_rings,  roi, centre, radius, first);
+			for (int j = 0; j < 12; j ++)
 			{
-				ContourFeature cFeat(contours_ring[i]);
-				centre.push_back(cFeat.getCentre()); //centre.y += 10;
-
-				// Get bounding box for contour
-				roi.push_back(boundingRect(contours_ring[i])); // This is a OpenCV function
-
-
-				//double area = cFeat.getArea();
-				//double length = sqrt(area);
-				drawContours(draw_rings, contours_ring, i, Scalar(255, 0, 0), CV_FILLED);
-				Mat contourRegion, imageROI;
-				Mat ring_mask(draw_rings.size(), CV_8UC1, Scalar::all(0));
-				imageROI =  ring_mask.clone(); // 'image' is the image you used to compute the contours.
-				////ring_mask = imageROI(roi).setTo(Scalar(255));
-				imageROI(roi[i]).setTo(Scalar::all(255));
-				ring_mask = draw_rings & imageROI;
-				////imageROI= ring_mask(contourRegion);
-
-				//// Mat maskROI = mask(roi); // Save this if you want a mask for pixels within the contour in contourRegion. 
-
-				//// Store contourRegion. contourRegion is a rectangular image the size of the bounding rect for the contour 
-				//// BUT only pixels within the contour is visible. All other pixels are set to (0,0,0).
-
-
-				subregions.push_back(ring_mask);
-
-				//RotatedRect rRect = RotatedRect(centre, Size2f(length+12+i,length-10-i), 30);
-				//Point2f vertices[4];
-				//rRect.points(vertices);
-				////for (int i = 0; i < 4; i++)
-				//	//line(draw_rings, vertices[i], vertices[(i+1)%4], Scalar(255,255,0));
-				//Rect brect = rRect.boundingRect();
-				//rectangle(draw_rings, brect, Scalar(0,255,0));
-
-				//os << "Centre ->( " << centre[i].x << "," << centre[i].y << ")" << endl;
-				//putText(draw_rings, os.str(), centre[i], 0, 0.4, cv::Scalar(0, 0, 255), 1, 8, false);
-				//os.str("");
-
-				//cvDestroyWindow("rectangles");
-
-			}
-
-
-			for (int j = 0; j < 6; j ++)
-			{
-				if( j == 2 )
+				if (j < 6)
 				{
-					Ring ring(centre[j+1], sqrt(pow(roi[j+1].width, 2.0) + pow (roi[j+1].height, 2.0))/ 2, subregions[j + 1]);
-					rings.push_back(ring);
-				}
-				else if( j == 3 )
-				{
-					Ring ring(centre[j-1], sqrt(pow(roi[j-1].width, 2.0) + pow (roi[j-1].height, 2.0))/ 2, subregions[j - 1]);
+					Ring ring(centre[j], radius[j], roi[j]);
 					rings.push_back(ring);
 				}
 				else
 				{
-					Ring ring(centre[j], sqrt(pow(roi[j].width, 2.0) + pow (roi[j].height, 2.0))/ 2, subregions[j]);
-					rings.push_back(ring);
+					
+					string line;
+					ifstream myfile;
+					myfile.open("..\\data\\Mask_roi.txt", FileStorage::READ);
+					if (myfile.is_open())
+					{
+						
+						
+						//fs.close();
+					}
+
+					else cout << "Unable to open file";
+
 				}
+					
 			}
 
+			//vector<Mat> ring_final_mask;
+			//for (int i = 0; i < 6; i ++)
+			//{
+			//	//ring_masks.push_back(rings[i].getRing_mask()); 
+			//	string outfilename = "E:\\Official\\IITD\\computer vision\\Assignments\\Programs\\opencv\\endo_tracking\\data\\ring_final_mask\\Mask_" + SSTR( p+1 ) + ".png";
+			//	p++;
+			//	Mat mask_of_final_ring = Mat::zeros(frame.rows, frame.cols, CV_8UC1);
+			//		
+			//	mask_of_final_ring = imread(outfilename, CV_LOAD_IMAGE_COLOR);
 
-
+			//	//For now I am giving it the same centre and radius..actually they are different...so make sure you change it Brit...
+			//	//If needed.
+			//	Ring ring_final(centre[i], radius[i], mask_of_final_ring);
+			//	rings_final.push_back(ring_final);
+			//}
 		}
 
 
 
-		vector<Mat> rings_out;
-		vector<double> gray_sum;
-		//Mat frameGray;
-		//cvtColor(mask_rings, frameGray, CV_BGR2GRAY);
+
+
+		// Check the ring mask for the successive frames to check if the mask is carrying the ring or not
+		vector<Mat> rings_out, rings_final_out;
+		vector<double> gray_sum, gray_sum_final;
+		//vector<Rect> ring_roi;
+
+
 		for (int i = 0; i < 6; i ++)
 		{
 
-			Mat current_ring_mask = rings[i].getRing_mask();
-			rings_out.push_back(current_ring_mask & mask_rings);
-			imshow(" current ring mask", rings_out[i]);
+			Rect current_mask = rings[i].getRoi();
+			rings_out.push_back(mask_rings(current_mask));
 			gray_sum.push_back(sum(sum(rings_out[i])).val[0]);
-			//cout <<"Sum of mask "<< gray_sum[i] << endl;
+
+
+			
+			//gray_sum_final.push_back(sum(sum(rings_final_out[i])).val[0]);
+			cout <<"Sum of mask           "<< gray_sum[i] << endl;
+			//cout <<"Sum of mask from ROI  "<< gray_sum_final[i] << endl;
 			//outStream << 0 << "\t" << gray_sum[i] << endl;
 		}
 
@@ -293,9 +384,9 @@ void ToolsTrackingApp::run()
 		//x.push_back(1.8e6);
 		//x.push_back(1.6e6);
 
+		// Various conditions to check the sum of the image in the mask
+		// If the sum ==0, there is no ring...else some motion is happening or ring is present
 
-		//bool is_equal = false;
-		//is_equal = equal (gray_sum.begin(), gray_sum.end(), x.begin());
 		vector<size_t> y(gray_sum.size());
 		vector<size_t> target_allrings;
 		vector<size_t> target_norings;
@@ -321,1094 +412,289 @@ void ToolsTrackingApp::run()
 
 			if (forward == true)
 			{
-
-				switch(target_allrings.size())
+				switch (target_norings.size())
 				{
 				case 0:
-					if (target_norings.size() == 6)
+					if (state_obj.getStatus() == "start")
 					{
-
-						if(state_obj.getStatus() == "5rings")
-						{
-							state_obj.setAllRings(2);
-							state_obj.setStatus("Allringsmoved");
-							forward = false;
-						}
-						else
-						{
-							state_obj.update_state(state_obj.getState());
-						}
-						outs1 << " All rings moved";
-						putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-						//cout << " All rings moved" << endl;
-					}
-					else if (target_norings.size() == 5)
-					{
-						if(state_obj.getStatus() == "fourrings")
-						{
-							state_obj.setRing(target_norings[0], 0);
-							state_obj.setRing(target_norings[1], 0);
-							state_obj.setRing(target_norings[2], 0);
-							state_obj.setRing(target_norings[3], 0);
-							state_obj.setRing(target_norings[4], 0);
-							state_obj.setStatus("5rings");
-						}
-						else
-						{
-							state_obj.update_state(state_obj.getState());
-						}
-						outs1 << " Some motion in mask but rings "<< target_norings[0] +1 << " , " << target_norings[1] +1 <<  " , " << target_norings[2] +1 << " , " << target_norings[3] +1 << " and " << target_norings[4] +1 << " moved";
-						putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-						//cout << " Some motion in mask but rings "<< target_norings[0] +1 << " , " << target_norings[1] +1 <<  " , " << target_norings[2] +1 << " , " << target_norings[3] +1 << " and " << target_norings[4] +1 << " moved" << endl;
-					}
-					else if (target_norings.size() == 4)
-					{
-						if(state_obj.getStatus() == "three_rings")
-						{
-							state_obj.setRing(target_norings[0], 0);
-							state_obj.setRing(target_norings[1], 0);
-							state_obj.setRing(target_norings[2], 0);
-							state_obj.setRing(target_norings[3], 0);
-							state_obj.setStatus("fourrings");
-						}
-						else
-						{
-							state_obj.update_state(state_obj.getState());
-						}
-						outs1 << " Some motion in mask but rings "<< target_norings[0] +1 << " , " << target_norings[1] +1 <<  " , " << target_norings[2] +1 << " and " << target_norings[3] +1 << " moved";
-						putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-						//cout << " Some motion in mask but rings "<< target_norings[0] +1 << " , " << target_norings[1] +1 <<  " , " << target_norings[2] +1 << " and " << target_norings[3] +1 << " moved" << endl;
-					}
-					else if (target_norings.size() == 3)
-					{
-						if(state_obj.getStatus() == "tworings")
-						{
-							state_obj.setRing(target_norings[0], 0);
-							state_obj.setRing(target_norings[1], 0);
-							state_obj.setRing(target_norings[2], 0);
-							state_obj.setStatus("three_rings");
-						}
-						else
-						{
-							state_obj.update_state(state_obj.getState());
-						}
-						outs1 << " Some motion in mask but rings "<< target_norings[0] +1 << " , " << target_norings[1] +1 <<" and " << target_norings[2] +1 << " moved";
-						putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-						//cout << " Some motion in mask but rings "<< target_norings[0] +1 << " , " << target_norings[1] +1 <<" and " << target_norings[2] +1 << " moved" << endl;
-					}
-					else if (target_norings.size() == 2)
-					{
-						if(state_obj.getStatus() == "onering")
-						{
-							state_obj.setRing(target_norings[0], 0);
-							state_obj.setRing(target_norings[1], 0);
-							state_obj.setStatus("tworings");
-						}
-						else
-						{
-							state_obj.update_state(state_obj.getState());
-						}
-						outs1 << " Some motion in mask but ring "<< target_norings[0] +1 << " and ring " << target_norings[1] +1 << " moved";
-						putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-						//cout << " Some motion in mask but ring "<< target_norings[0] +1 << " and ring " << target_norings[1] +1 << " moved" << endl;
-					}
-					else if (target_norings.size() == 1)
-					{
-						if(state_obj.getStatus() == "Stationary")
-						{
-							state_obj.setRing(target_norings[0], 0); 
-							state_obj.setStatus("onering");
-						}
-						else
-						{
-							state_obj.update_state(state_obj.getState());
-						}
-						outs1 << " Some motion in mask  but ring "<<  target_norings[0]+1 <<" moved";
-						putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-						//cout << " Some motion in mask  but ring "<<  target_norings[0]+1 <<" moved" << endl;
-						
+						state_obj.setAllRings(1);
+						state_obj.setStatus("Stationary");
 					}
 					else
-						outs1 << " Some motion in masks but no ring moved";
-						putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-					//cout << " Some motion in masks but no ring moved" << endl;
+					{
+						state_obj.update_state(state_obj.getState());
+					}
+					outs1 << "All rings stationary";
+					putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
+					//state_obj.setStatus("Stationary");
+					//cout << "All rings stationary" << endl;
 					break;
 				case 1:
-					if (target_norings.size() == 5)
+					if (state_obj.getStatus() == "Stationary")
 					{
-						if(state_obj.getStatus() == "fourrings")
-						{
-							state_obj.setRing(target_norings[0], 0);
-							state_obj.setRing(target_norings[1], 0);
-							state_obj.setRing(target_norings[2], 0);
-							state_obj.setRing(target_norings[3], 0);
-							state_obj.setRing(target_norings[4], 0);
-							state_obj.setStatus("5rings");
-						}
-						else
-						{
-							state_obj.update_state(state_obj.getState());
-						}
-						outs1 << " No motion in mask but rings "<< target_norings[0] +1 << " , " << target_norings[1] +1 <<  " , " << target_norings[2] +1 << " , " << target_norings[3] +1 << " and " << target_norings[4] +1 << " moved";
-						putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-						//cout << " No motion in mask but rings "<< target_norings[0] +1 << " , " << target_norings[1] +1 <<  " , " << target_norings[2] +1 << " , " << target_norings[3] +1 << " and " << target_norings[4] +1 << " moved" << endl;
-					}
-					//cout << " All but one ring moved" << endl;
-					else if (target_norings.size() == 4)
-					{
-						if(state_obj.getStatus() == "three_rings")
-						{
-							state_obj.setRing(target_norings[0], 0);
-							state_obj.setRing(target_norings[1], 0);
-							state_obj.setRing(target_norings[2], 0);
-							state_obj.setRing(target_norings[3], 0);
-							state_obj.setStatus("fourrings");
-						}
-						else
-						{
-							state_obj.update_state(state_obj.getState());
-						}
-						outs1 << " Some motion in mask but rings "<< target_norings[0] +1 << " , " << target_norings[1] +1 <<  " , " << target_norings[2] +1 << " and " << target_norings[3] +1 << " moved";
-						putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-						//cout << " Some motion in mask but rings "<< target_norings[0] +1 << " , " << target_norings[1] +1 <<  " , " << target_norings[2] +1 << " and " << target_norings[3] +1 << " moved" << endl;
-					}
-
-					//cout << " Some motion in mask but 4 rings moved" << endl;
-					else if (target_norings.size() == 3)
-					{
-						if(state_obj.getStatus() == "tworings")
-						{
-							state_obj.setRing(target_norings[0], 0);
-							state_obj.setRing(target_norings[1], 0);
-							state_obj.setRing(target_norings[2], 0);
-							state_obj.setStatus("three_rings");
-						}
-						else
-						{
-							state_obj.update_state(state_obj.getState());
-						}
-						outs1 <<  " Some motion in mask but rings "<< target_norings[0] +1 << " , " << target_norings[1] +1 <<" and " << target_norings[2] +1 << " moved";
-						putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-						//cout << " Some motion in mask but rings "<< target_norings[0] +1 << " , " << target_norings[1] +1 <<" and " << target_norings[2] +1 << " moved" << endl;
-					}
-					else if (target_norings.size() == 2)
-					{
-						if(state_obj.getStatus() == "onering")
-						{
-							state_obj.setRing(target_norings[0], 0);
-							state_obj.setRing(target_norings[1], 0);
-							state_obj.setStatus("tworings");
-						}
-						else
-						{
-							state_obj.update_state(state_obj.getState());
-						}
-						outs1 << " Some motion in mask but ring "<< target_norings[0] +1 << " and ring " << target_norings[1] +1 << " moved";
-						putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-						//cout << " Some motion in mask but ring "<< target_norings[0] +1 << " and ring " << target_norings[1] +1 << " moved" << endl;
-					}
-					else if (target_norings.size() == 1)
-					{
-						if(state_obj.getStatus() == "Stationary")
-						{
-							state_obj.setRing(target_norings[0], 0); 
-							state_obj.setStatus("onering");
-						}
-						else
-						{
-							state_obj.update_state(state_obj.getState());
-						}
-						outs1 << " Some motion in mask  but ring "<<  target_norings[0]+1 <<" moved";
-						putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-						//cout << " Some motion in mask  but ring "<<  target_norings[0]+1 <<" moved" << endl;
+						state_obj.setRing(target_norings[0], 0);
+						state_obj.setStatus("onering");
 					}
 					else
-						outs1 << " Some motion in masks but no ring moved";
-						putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-					//cout << " Some motion in masks but no ring moved" << endl;
+					{
+						state_obj.update_state(state_obj.getState());
+					}
+					outs1 << " One ring " << target_norings[0] + 1 << " moved";
+					putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
+					//cout << " No motion in mask but ring "<<  target_norings[0]+1 <<" moved" << endl;
 					break;
-
 				case 2:
-					if (target_norings.size() == 4)
+					if (state_obj.getStatus() == "onering")
 					{
-						if(state_obj.getStatus() == "three_rings")
-						{
-							state_obj.setRing(target_norings[0], 0);
-							state_obj.setRing(target_norings[1], 0);
-							state_obj.setRing(target_norings[2], 0);
-							state_obj.setRing(target_norings[3], 0);
-							state_obj.setStatus("fourrings");
-						}
-						else
-						{
-							state_obj.update_state(state_obj.getState());
-						}
-						outs1 << " No motion in mask but rings "<< target_norings[0] +1 << " , " << target_norings[1] +1 <<  " , " << target_norings[2] +1 << " and " << target_norings[3] +1 << " moved";
-						putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-						//cout << " No motion in mask but rings "<< target_norings[0] +1 << " , " << target_norings[1] +1 <<  " , " << target_norings[2] +1 << " and " << target_norings[3] +1 << " moved" << endl;
-					}
-					//cout << " All but two rings moved" << endl;
-					else if (target_norings.size() == 3)
-					{
-						if(state_obj.getStatus() == "tworings")
-						{
-							state_obj.setRing(target_norings[0], 0);
-							state_obj.setRing(target_norings[1], 0);
-							state_obj.setRing(target_norings[2], 0);
-							state_obj.setStatus("three_rings");
-						}
-						else
-						{
-							state_obj.update_state(state_obj.getState());
-						}
-						outs1 << " Some motion in mask but rings "<< target_norings[0] +1 << " , " << target_norings[1] +1 <<" and " << target_norings[2] +1 << " moved";
-						putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-						//cout << " Some motion in mask but rings "<< target_norings[0] +1 << " , " << target_norings[1] +1 <<" and " << target_norings[2] +1 << " moved" << endl;
-					}
-					else if (target_norings.size() == 2)
-					{
-						if(state_obj.getStatus() == "onering")
-						{
-							state_obj.setRing(target_norings[0], 0);
-							state_obj.setRing(target_norings[1], 0);
-							state_obj.setStatus("tworings");
-						}
-						else
-						{
-							state_obj.update_state(state_obj.getState());
-						}
-						outs1 <<  " Some motion in mask but ring "<< target_norings[0] +1 << " and ring " << target_norings[1] +1 << " moved";
-						putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-						//cout << " Some motion in mask but ring "<< target_norings[0] +1 << " and ring " << target_norings[1] +1 << " moved" << endl;
-					}
-					else if (target_norings.size() == 1)
-					{
-						//state_obj.setRing(target_norings[0], 0); 
-						if(state_obj.getStatus() == "Stationary")
-						{
-							state_obj.setRing(target_norings[0], 0); 
-							state_obj.setStatus("onering");
-						}
-						else
-						{
-							state_obj.update_state(state_obj.getState());
-						}
-						outs1 << " Some motion in mask  but ring "<<  target_norings[0]+1 <<" moved";
-						putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-						//cout << " Some motion in mask  but ring "<<  target_norings[0]+1 <<" moved" << endl;
-						//cout << " but 1 ring moved" << endl;
+						state_obj.setRing(target_norings[0], 0);
+						state_obj.setRing(target_norings[1], 0);
+						state_obj.setStatus("tworings");
 					}
 					else
-						outs1 << "Some motion in masks but no ring moved";
-						putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-					//cout << "Some motion in masks but no ring moved" << endl;
+					{
+						state_obj.update_state(state_obj.getState());
+					}
+					outs1 << " Rings " << target_norings[0] + 1 << " and ring " << target_norings[1] + 1 << " moved";
+					putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
+					//cout << " Rings "<< target_norings[0] +1 << " and ring " << target_norings[1] +1 << " moved" << endl;
 					break;
 				case 3:
-					if (target_norings.size() == 3)
+					if (state_obj.getStatus() == "tworings")
 					{
-						if(state_obj.getStatus() == "tworings")
-						{
-							state_obj.setRing(target_norings[0], 0);
-							state_obj.setRing(target_norings[1], 0);
-							state_obj.setRing(target_norings[2], 0);
-							state_obj.setStatus("three_rings");
-						}
-						else
-						{
-							state_obj.update_state(state_obj.getState());
-						}
-						outs1 << " No motion in mask but ring "<< target_norings[0] +1 << " , " << target_norings[1] +1 <<" and ring " << target_norings[2] +1 << " moved";
-						putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-						//cout << " No motion in mask but ring "<< target_norings[0] +1 << " , " << target_norings[1] +1 <<" and ring " << target_norings[2] +1 << " moved" << endl;
-					}
-
-					else if (target_norings.size() == 2)
-					{
-						if(state_obj.getStatus() == "onering")
-						{
-							state_obj.setRing(target_norings[0], 0);
-							state_obj.setRing(target_norings[1], 0);
-							state_obj.setStatus("tworings");
-						}
-						else
-						{
-							state_obj.update_state(state_obj.getState());
-						}
-						outs1 << " Some motion in mask but ring "<< target_norings[0] +1 << " and ring " << target_norings[1] +1 << " moved";
-						putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-						//cout << " Some motion in mask but ring "<< target_norings[0] +1 << " and ring " << target_norings[1] +1 << " moved" << endl;
-					}
-					else if (target_norings.size() == 1)
-					{
-						if(state_obj.getStatus() == "Stationary")
-						{
-							state_obj.setRing(target_norings[0], 0); 
-							state_obj.setStatus("onering");
-						}
-						else
-						{
-							state_obj.update_state(state_obj.getState());
-						}
-						outs1 << " Some motion in mask but ring "<<  target_norings[0] +1 << " moved";
-						putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-						
-						//cout << " Some motion in mask but ring "<<  target_norings[0] +1 << " moved" << endl;
+						state_obj.setRing(target_norings[0], 0);
+						state_obj.setRing(target_norings[1], 0);
+						state_obj.setRing(target_norings[2], 0);
+						state_obj.setStatus("three_rings");
 					}
 					else
-						outs1 << " Some motion in masks but no ring moved";
-						putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-						
-						//cout << " Some motion in masks but no ring moved" << endl;
+					{
+						state_obj.update_state(state_obj.getState());
+					}
+					outs1 << " Rings " << target_norings[0] + 1 << " , " << target_norings[1] + 1 << " and ring " << target_norings[2] + 1 << " moved";
+					putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
+					//cout << " Rings "<< target_norings[0] +1 << " , " << target_norings[1] +1 <<" and ring " << target_norings[2] +1 << " moved" << endl;
 					break;
 				case 4:
-					if (target_norings.size() == 2)
+					if (state_obj.getStatus() == "three_rings")
 					{
-						if(state_obj.getStatus() == "onering")
-						{
-							state_obj.setRing(target_norings[0], 0);
-							state_obj.setRing(target_norings[1], 0);
-							state_obj.setStatus("tworings");
-						}
-						else
-						{
-							state_obj.update_state(state_obj.getState());
-						}
-						outs1 << " No motion in mask but ring "<< target_norings[0] +1 << " and ring " << target_norings[1] +1 << " moved" ;
-						putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-						//cout << " No motion in mask but ring "<< target_norings[0] +1 << " and ring " << target_norings[1] +1 << " moved" << endl;
-					}
-					else if (target_norings.size() == 1)
-					{
-						//state_obj.setRing(target_norings[0], 0); 
-						if(state_obj.getStatus() == "Stationary")
-						{
-							state_obj.setRing(target_norings[0], 0); 
-							state_obj.setStatus("onering");
-						}
-						else
-						{
-							state_obj.update_state(state_obj.getState());
-						}
-						outs1 << " Some motion in mask but ring "<<  target_norings[0]+1 <<" moved";
-						putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-						//cout << " Some motion in mask but ring "<<  target_norings[0]+1 <<" moved" << endl;
+						state_obj.setRing(target_norings[0], 0);
+						state_obj.setRing(target_norings[1], 0);
+						state_obj.setRing(target_norings[2], 0);
+						state_obj.setRing(target_norings[3], 0);
+						state_obj.setStatus("fourrings");
 					}
 					else
-						outs1 << "Some motion in masks but no ring moved";
-						putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-						//cout << "Some motion in masks but no ring moved" << endl;
+					{
+						state_obj.update_state(state_obj.getState());
+					}
+					outs1 << " Rings " << target_norings[0] + 1 << " , " << target_norings[1] + 1 << " , " << target_norings[2] + 1 << " and " << target_norings[3] + 1 << " moved";
+					putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
 					break;
+					//cout << " Rings "<< target_norings[0] +1 << " , " << target_norings[1] +1 <<  " , " << target_norings[2] +1 << " and " << target_norings[3] +1 << " moved" << endl;
 				case 5:
-					if (target_norings.size() == 1)
+					if (state_obj.getStatus() == "fourrings")
 					{
-						//state_obj.setRing(target_norings[0], 0); 
-						if(state_obj.getStatus() == "Stationary")
-						{
-							state_obj.setRing(target_norings[0], 0); 
-							state_obj.setStatus("onering");
-						}
-						else
-						{
-							state_obj.update_state(state_obj.getState());
-						}
-						outs1 << " No motion in mask but ring "<<  target_norings[0]+1 <<" moved";
-						putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-						//cout << " No motion in mask but ring "<<  target_norings[0]+1 <<" moved" << endl;
+						state_obj.setRing(target_norings[0], 0);
+						state_obj.setRing(target_norings[1], 0);
+						state_obj.setRing(target_norings[2], 0);
+						state_obj.setRing(target_norings[3], 0);
+						state_obj.setRing(target_norings[4], 0);
+						state_obj.setStatus("5rings");
 					}
 					else
-						outs1 << "Some motion in masks but no ring moved";
-						putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-						//cout << " Some motion in masks but no ring moved" << endl;
+					{
+						state_obj.update_state(state_obj.getState());
+					}
+					outs1 << " Rings " << target_norings[0] + 1 << " , " << target_norings[1] + 1 << " , " << target_norings[2] + 1 << " , " << target_norings[3] + 1 << " and " << target_norings[4] + 1 << " moved";
+					putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
+					//cout << " Rings "<< target_norings[0] +1 << " , " << target_norings[1] +1 <<  " , " << target_norings[2] +1 << " , " << target_norings[3] +1 << " and " << target_norings[4] +1 << " moved" << endl;
 					break;
 				case 6:
-					if (target_norings.size() == 0)
+
+					if (state_obj.getStatus() == "5rings")
 					{
-						if(state_obj.getStatus() == "start")
-						{
-							state_obj.setAllRings(1); 
-							state_obj.setStatus("Stationary");
-						}
-						else
-						{
-							state_obj.update_state(state_obj.getState());
-						}
-
-						outs1 << "All rings stationary";
-						putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-						//state_obj.setStatus("Stationary");
-						//cout << "All rings stationary" << endl;
+						state_obj.setAllRings(2);
+						state_obj.setStatus("Allringsmoved");
+						forward = false;
 					}
-
 					else
-						outs1 << " Unknown";
-						putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-						//cout << " Unknown" << endl;
+					{
+						state_obj.update_state(state_obj.getState());
+					}
+					outs1 << " All rings moved";
+					putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
+					//cout << " All rings moved" << endl;
 					break;
 				}
+
 
 
 			}
 			else
 			{
-				switch(target_norings.size())
+				switch (target_allrings.size())
 				{
-					case 0:
-						if (target_allrings.size() == 6)
-						{
+				case 0:
+					if (state_obj.getStatus() == "Allringsmoved")
+					{
+						//state_obj.setAllRings(1); 
+						state_obj.setStatus("Allringsmoved");
+					}
+					//state_obj.setStatus("Stationary");
+					outs1 << "All rings moved";
+					//cout << "Count now" << count << endl;
+					putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
+					//cout << "All rings moved" << endl;
+					break;
+				case 1:
+					//state_obj.setRing(target_norings[0], 0); 
+					if (state_obj.getStatus() == "Allringsmoved")
+					{
+						state_obj.setAllRings(2);
+						state_obj.setRing(target_allrings[0], 1);
+						state_obj.setStatus("1back");
 
-							if(state_obj.getStatus() == "5")
-							{
-								state_obj.setAllRings(1);
-								state_obj.setStatus("Stationary");
-								forward = true;
-							}
-							else
-							{
-								state_obj.update_state(state_obj.getState());
-							}
-							outs1 << " All rings moved back";
-							putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-							//cout << " All rings moved back" << endl;
-						}
-						else if (target_allrings.size() == 5)
-						{
-							if(state_obj.getStatus() == "4b")
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1);
-								state_obj.setRing(target_allrings[1], 1);
-								state_obj.setRing(target_allrings[2], 1);
-								state_obj.setRing(target_allrings[3], 1);
-								state_obj.setRing(target_allrings[4], 1);
-								state_obj.setStatus("5");
-							}
-							else if (state_obj.getStatus() == "5")
-							{
-								state_obj.update_state(state_obj.getState());
-							}
-							else
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1);
-								state_obj.setRing(target_allrings[1], 1);
-								state_obj.setRing(target_allrings[2], 1);
-								state_obj.setRing(target_allrings[3], 1);
-								state_obj.setRing(target_allrings[4], 1);
-								state_obj.setStatus("5");
-							}
-							outs1 << " Some motion in mask but rings "<< target_allrings[0] +1 << " , " << target_allrings[1] +1 <<  " , " << target_allrings[2] +1 << " , " << target_allrings[3] +1 << " and " << target_allrings[4] +1 << " moved back";
-							putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-							//cout << " Some motion in mask but rings "<< target_allrings[0] +1 << " , " << target_allrings[1] +1 <<  " , " << target_allrings[2] +1 << " , " << target_allrings[3] +1 << " and " << target_allrings[4] +1 << " moved back" << endl;
-						}
-						else if (target_allrings.size() == 4)
-						{
-							if(state_obj.getStatus() == "3ba")
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1);
-								state_obj.setRing(target_allrings[1], 1);
-								state_obj.setRing(target_allrings[2], 1);
-								state_obj.setRing(target_allrings[3], 1);
-								state_obj.setStatus("4b");
-							}
-							else if (state_obj.getStatus() == "4b")
-							{
-								state_obj.update_state(state_obj.getState());
-							}
-							else
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1);
-								state_obj.setRing(target_allrings[1], 1);
-								state_obj.setRing(target_allrings[2], 1);
-								state_obj.setRing(target_allrings[3], 1);
-								state_obj.setStatus("4b");
-							}
-							outs1 << " Some motion in mask but rings "<< target_allrings[0] +1 << " , " << target_allrings[1] +1 <<  " , " << target_allrings[2] +1 << " and " << target_allrings[3] +1 << " moved back";
-							putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-							//cout << " Some motion in mask but rings "<< target_allrings[0] +1 << " , " << target_allrings[1] +1 <<  " , " << target_allrings[2] +1 << " and " << target_allrings[3] +1 << " moved back" << endl;
-						}
+					}
+					else if (state_obj.getStatus() == "1back")
+					{
+						state_obj.update_state(state_obj.getState());
+					}
+					else
+					{
+						state_obj.setAllRings(2);
+						state_obj.setRing(target_allrings[0], 1);
+						state_obj.setStatus("1back");
+					}
+					outs1 << " Some motion in masks but ring " << target_allrings[0] + 1 << " moved back";
+					putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
+					//cout << " Some motion in masks but ring "<<  target_allrings[0]+1 <<" moved back" << endl;
+					break;
+				case 2:
+					if (state_obj.getStatus() == "1back")
+					{
+						state_obj.setAllRings(2);
+						state_obj.setRing(target_allrings[0], 1);
+						state_obj.setRing(target_allrings[1], 1);
+						state_obj.setStatus("2bac");
+					}
+					else if (state_obj.getStatus() == "2bac")
+					{
+						state_obj.update_state(state_obj.getState());
+					}
+					else
+					{
+						state_obj.setAllRings(2);
+						state_obj.setRing(target_allrings[0], 1);
+						state_obj.setRing(target_allrings[1], 1);
+						state_obj.setStatus("2bac");
+					}
+					outs1 << " Some motion in mask but ring " << target_allrings[0] + 1 << " and ring " << target_allrings[1] + 1 << " moved back";
+					putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
+					//cout << " Some motion in mask but ring "<< target_allrings[0] +1 << " and ring " << target_allrings[1] +1 << " moved back" << endl;
 
-						else if (target_allrings.size() == 3)
-						{
-							if(state_obj.getStatus() == "2bac")
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1);
-								state_obj.setRing(target_allrings[1], 1);
-								state_obj.setRing(target_allrings[2], 1);
-								state_obj.setStatus("3ba");
-							}
-							else if (state_obj.getStatus() == "3ba")
-							{
-								state_obj.update_state(state_obj.getState());
-							}
-							else
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1);
-								state_obj.setRing(target_allrings[1], 1);
-								state_obj.setRing(target_allrings[2], 1);
-								state_obj.setStatus("3ba");
-							}
-							outs1 << " Some motion in mask but ring "<< target_allrings[0] +1 << " , " << target_allrings[1] +1 <<" and ring " << target_allrings[2] +1 << " moved back";
-							putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-							//cout << " Some motion in mask but ring "<< target_allrings[0] +1 << " , " << target_allrings[1] +1 <<" and ring " << target_allrings[2] +1 << " moved back" << endl;
-						}
-						else if (target_allrings.size() == 2)
-						{
-							if(state_obj.getStatus() == "1back")
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1);
-								state_obj.setRing(target_allrings[1], 1);
-								state_obj.setStatus("2bac");
-							}
-							else if (state_obj.getStatus() == "1back")
-							{
-								state_obj.update_state(state_obj.getState());
-							}
-							else
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1);
-								state_obj.setRing(target_allrings[1], 1);
-								state_obj.setStatus("2bac");
-							}
-							outs1 << " Some motion in mask but ring "<< target_allrings[0] +1 << " and ring " << target_allrings[1] +1 << " moved back";
-							putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-							//cout << " Some motion in mask but ring "<< target_allrings[0] +1 << " and ring " << target_allrings[1] +1 << " moved back" << endl;
-						}
-						else if (target_allrings.size() == 1)
-						{
-							//state_obj.setRing(target_norings[0], 0); 
-							if(state_obj.getStatus() == "Allringsmoved")
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1); 
-								state_obj.setStatus("1back");
 
-							}
-							else if (state_obj.getStatus() == "1back")
-							{
-								state_obj.update_state(state_obj.getState());
-							}
-							else
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1); 
-								state_obj.setStatus("1back");
-							}
-							outs1 << " Some motion in masks but ring "<<  target_allrings[0]+1 <<" moved back";
-							putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-							//cout << " Some motion in masks but ring "<<  target_allrings[0]+1 <<" moved back" << endl;
-						}
-						else
-						{
-							if(state_obj.getStatus() == "Allringsmoved")
-							{
-								outs1 << " Some motion in masks but no ring moved";
-								putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-								//cout << " Some motion in masks but no ring moved" << endl;
-							}
-							else
-							{
-								state_obj.update_state(state_obj.getState());
-								outs1 << " Some motion in masks but no ring moved";
-								putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-								//cout << " Some motion in masks but no ring moved" << endl;
-							}
-						}
-						break;
-					case 1:
-						if (target_allrings.size() == 5)
-						{
-							if(state_obj.getStatus() == "4b")
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1);
-								state_obj.setRing(target_allrings[1], 1);
-								state_obj.setRing(target_allrings[2], 1);
-								state_obj.setRing(target_allrings[3], 1);
-								state_obj.setRing(target_allrings[4], 1);
-								state_obj.setStatus("5");
-							}
-							else if (state_obj.getStatus() == "5")
-							{
-								state_obj.update_state(state_obj.getState());
-							}
-							else
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1);
-								state_obj.setRing(target_allrings[1], 1);
-								state_obj.setRing(target_allrings[2], 1);
-								state_obj.setRing(target_allrings[3], 1);
-								state_obj.setRing(target_allrings[4], 1);
-								state_obj.setStatus("5");
-							}
-							outs1 << " No motion in mask but rings "<< target_allrings[0] +1 << " , " << target_allrings[1] +1 <<  " , " << target_allrings[2] +1 << " , " << target_allrings[3] +1 << " and " << target_allrings[4] +1 << " moved back" ;
-							putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-							//cout << " No motion in mask but rings "<< target_allrings[0] +1 << " , " << target_allrings[1] +1 <<  " , " << target_allrings[2] +1 << " , " << target_allrings[3] +1 << " and " << target_allrings[4] +1 << " moved back" << endl;
-						}
-						else if (target_allrings.size() == 4)
-						{
-							if(state_obj.getStatus() == "3ba")
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1);
-								state_obj.setRing(target_allrings[1], 1);
-								state_obj.setRing(target_allrings[2], 1);
-								state_obj.setRing(target_allrings[3], 1);
-								state_obj.setStatus("4b");
-							}
-							else if (state_obj.getStatus() == "4b")
-							{
-								state_obj.update_state(state_obj.getState());
-							}
-							else
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1);
-								state_obj.setRing(target_allrings[1], 1);
-								state_obj.setRing(target_allrings[2], 1);
-								state_obj.setRing(target_allrings[3], 1);
-								state_obj.setStatus("4b");
-							}
-							outs1 << " Some motion in mask but rings "<< target_allrings[0] +1 << " , " << target_allrings[1] +1 <<  " , " << target_allrings[2] +1 << " and " << target_allrings[3] +1 << " moved back";
-							putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-							//cout << " Some motion in mask but rings "<< target_allrings[0] +1 << " , " << target_allrings[1] +1 <<  " , " << target_allrings[2] +1 << " and " << target_allrings[3] +1 << " moved back" << endl;
-						}
+					break;
+				case 3:
+					if (state_obj.getStatus() == "2bac")
+					{
+						state_obj.setAllRings(2);
+						state_obj.setRing(target_allrings[0], 1);
+						state_obj.setRing(target_allrings[1], 1);
+						state_obj.setRing(target_allrings[2], 1);
+						state_obj.setStatus("3ba");
+					}
+					else if (state_obj.getStatus() == "3ba")
+					{
+						state_obj.update_state(state_obj.getState());
+					}
+					else
+					{
+						state_obj.setAllRings(2);
+						state_obj.setRing(target_allrings[0], 1);
+						state_obj.setRing(target_allrings[1], 1);
+						state_obj.setRing(target_allrings[2], 1);
+						state_obj.setStatus("3ba");
+					}
 
-						else if (target_allrings.size() == 3)
-						{
-							if(state_obj.getStatus() == "2bac")
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1);
-								state_obj.setRing(target_allrings[1], 1);
-								state_obj.setRing(target_allrings[2], 1);
-								state_obj.setStatus("3ba");
-							}
-							else if(state_obj.getStatus() == "3ba")
-							{
-								state_obj.update_state(state_obj.getState());
-							}
-							else
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1);
-								state_obj.setRing(target_allrings[1], 1);
-								state_obj.setRing(target_allrings[2], 1);
-								state_obj.setStatus("3ba");
-							}
-							outs1 << " Some motion in mask but ring "<< target_allrings[0] +1 << " , " << target_allrings[1] +1 <<" and ring " << target_allrings[2] +1 << " moved back";
-							putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-							//cout << " Some motion in mask but ring "<< target_allrings[0] +1 << " , " << target_allrings[1] +1 <<" and ring " << target_allrings[2] +1 << " moved back" << endl;
-						}
-						else if (target_allrings.size() == 2)
-						{
-							if(state_obj.getStatus() == "1back")
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1);
-								state_obj.setRing(target_allrings[1], 1);
-								state_obj.setStatus("2bac");
-							}
-							else if (state_obj.getStatus() == "2bac")
-							{
-								state_obj.update_state(state_obj.getState());
-							}
-							else
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1);
-								state_obj.setRing(target_allrings[1], 1);
-								state_obj.setStatus("2bac");
-							}
-							outs1 << " Some motion in mask but ring "<< target_allrings[0] +1 << " and ring " << target_allrings[1] +1 << " moved back";
-							putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-							//cout << " Some motion in mask but ring "<< target_allrings[0] +1 << " and ring " << target_allrings[1] +1 << " moved back" << endl;
-						}
-						else if (target_allrings.size() == 1)
-						{
-							//state_obj.setRing(target_norings[0], 0); 
-							if(state_obj.getStatus() == "Allringsmoved")
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1); 
-								state_obj.setStatus("1back");
+					outs1 << " No motion in mask but ring " << target_allrings[0] + 1 << " , " << target_allrings[1] + 1 << " and ring " << target_allrings[2] + 1 << " moved back";
+					putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
+					//cout << " No motion in mask but ring "<< target_allrings[0] +1 << " , " << target_allrings[1] +1 <<" and ring " << target_allrings[2] +1 << " moved back" << endl;
+					break;
+				case 4:
 
-							}
-							else if (state_obj.getStatus() == "1back")
-							{
-								state_obj.update_state(state_obj.getState());
-							}
-							else
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1); 
-								state_obj.setStatus("1back");
-							}
-							outs1 << " Some motion in masks but ring "<<  target_allrings[0]+1 <<" moved back";
-							putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-							//cout << " Some motion in masks but ring "<<  target_allrings[0]+1 <<" moved back" << endl;
-						}
-						else
-						{
-							if(state_obj.getStatus() == "Allringsmoved")
-							{
-								outs1 << " Some motion in masks but no ring moved";
-								putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-								//cout << " Some motion in masks but no ring moved" << endl;
-							}
-							else
-							{
-								state_obj.update_state(state_obj.getState());
-								outs1 << " Some motion in masks but no ring moved";
-								putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-								//cout << " Some motion in masks but no ring moved" << endl;
-							}
-						}
-						break;
-					case 2:
-						if (target_allrings.size() == 4)
-						{
-							if(state_obj.getStatus() == "3ba")
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1);
-								state_obj.setRing(target_allrings[1], 1);
-								state_obj.setRing(target_allrings[2], 1);
-								state_obj.setRing(target_allrings[3], 1);
-								state_obj.setStatus("4b");
-							}
-							else if (state_obj.getStatus() == "4b")
-							{
-								state_obj.update_state(state_obj.getState());
-							}
-							else
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1);
-								state_obj.setRing(target_allrings[1], 1);
-								state_obj.setRing(target_allrings[2], 1);
-								state_obj.setRing(target_allrings[3], 1);
-								state_obj.setStatus("4b");
-							}
-							outs1 << " No motion in mask but rings "<< target_allrings[0] +1 << " , " << target_allrings[1] +1 <<  " , " << target_allrings[2] +1 << " and " << target_allrings[3] +1 << " moved back";
-							putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-							//cout << " No motion in mask but rings "<< target_allrings[0] +1 << " , " << target_allrings[1] +1 <<  " , " << target_allrings[2] +1 << " and " << target_allrings[3] +1 << " moved back" << endl;
-						}
+					if (state_obj.getStatus() == "3ba")
+					{
+						state_obj.setAllRings(2);
+						state_obj.setRing(target_allrings[0], 1);
+						state_obj.setRing(target_allrings[1], 1);
+						state_obj.setRing(target_allrings[2], 1);
+						state_obj.setRing(target_allrings[3], 1);
+						state_obj.setStatus("4b");
+					}
+					else if (state_obj.getStatus() == "4b")
+					{
+						state_obj.update_state(state_obj.getState());
+					}
+					else
+					{
+						state_obj.setAllRings(2);
+						state_obj.setRing(target_allrings[0], 1);
+						state_obj.setRing(target_allrings[1], 1);
+						state_obj.setRing(target_allrings[2], 1);
+						state_obj.setRing(target_allrings[3], 1);
+						state_obj.setStatus("4b");
+					}
+					outs1 << " No motion in mask but rings " << target_allrings[0] + 1 << " , " << target_allrings[1] + 1 << " , " << target_allrings[2] + 1 << " and " << target_allrings[3] + 1 << " moved back";
+					putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
+					//cout << " No motion in mask but rings "<< target_allrings[0] +1 << " , " << target_allrings[1] +1 <<  " , " << target_allrings[2] +1 << " and " << target_allrings[3] +1 << " moved back" << endl;
 
-						else if (target_allrings.size() == 3)
-						{
-							if(state_obj.getStatus() == "2bac")
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1);
-								state_obj.setRing(target_allrings[1], 1);
-								state_obj.setRing(target_allrings[2], 1);
-								state_obj.setStatus("3ba");
-							}
-							else if (state_obj.getStatus() == "3ba")
-							{
-								state_obj.update_state(state_obj.getState());
-							}
-							else
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1);
-								state_obj.setRing(target_allrings[1], 1);
-								state_obj.setRing(target_allrings[2], 1);
-								state_obj.setStatus("3ba");
-							}
-							outs1 << " Some motion in mask but ring "<< target_allrings[0] +1 << " , " << target_allrings[1] +1 <<" and ring " << target_allrings[2] +1 << " moved back";
-							putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-							//cout << " Some motion in mask but ring "<< target_allrings[0] +1 << " , " << target_allrings[1] +1 <<" and ring " << target_allrings[2] +1 << " moved back" << endl;
-						}
-						else if (target_allrings.size() == 2)
-						{
-							if(state_obj.getStatus() == "1back")
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1);
-								state_obj.setRing(target_allrings[1], 1);
-								state_obj.setStatus("2bac");
-							}
-							else if (state_obj.getStatus() == "2bac")
-							{
-								state_obj.update_state(state_obj.getState());
-							}
-							else
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1);
-								state_obj.setRing(target_allrings[1], 1);
-								state_obj.setStatus("2bac");
-							}
-							outs1 << " Some motion in mask but ring "<< target_allrings[0] +1 << " and ring " << target_allrings[1] +1 << " moved back";
-							putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-							//cout << " Some motion in mask but ring "<< target_allrings[0] +1 << " and ring " << target_allrings[1] +1 << " moved back" << endl;
-						}
-						else if (target_allrings.size() == 1)
-						{
-							//state_obj.setRing(target_norings[0], 0); 
-							if(state_obj.getStatus() == "Allringsmoved")
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1); 
-								state_obj.setStatus("1back");
+					break;
+				case 5:
 
-							}
-							else if(state_obj.getStatus() == "1back")
-							{
-								state_obj.update_state(state_obj.getState());
-							}
-							else
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1); 
-								state_obj.setStatus("1back");
-							}
-							outs1 << " Some motion in masks but ring "<<  target_allrings[0]+1 <<" moved back";
-							putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-							//cout << " Some motion in masks but ring "<<  target_allrings[0]+1 <<" moved back" << endl;
-						}
-						else
-						{
-							if(state_obj.getStatus() == "Allringsmoved")
-							{
-								outs1 << " Some motion in masks but no ring moved" ;
-								putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-								//cout << " Some motion in masks but no ring moved" << endl;
-							}
-							else
-							{
-								state_obj.update_state(state_obj.getState());
-								
-								outs1 << " Some motion in masks but no ring moved" ;
-								putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-								//cout << " Some motion in masks but no ring moved" << endl;
-							}
-						}
-						break;
-					case 3:
-						if (target_allrings.size() == 3)
-						{
-							if(state_obj.getStatus() == "2bac")
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1);
-								state_obj.setRing(target_allrings[1], 1);
-								state_obj.setRing(target_allrings[2], 1);
-								state_obj.setStatus("3ba");
-							}
-							else if (state_obj.getStatus() == "3ba")
-							{
-								state_obj.update_state(state_obj.getState());
-							}
-							else
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1);
-								state_obj.setRing(target_allrings[1], 1);
-								state_obj.setRing(target_allrings[2], 1);
-								state_obj.setStatus("3ba");
-							}
-							
-								outs1 << " No motion in mask but ring "<< target_allrings[0] +1 << " , " << target_allrings[1] +1 <<" and ring " << target_allrings[2] +1 << " moved back" ;
-								putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-							//cout << " No motion in mask but ring "<< target_allrings[0] +1 << " , " << target_allrings[1] +1 <<" and ring " << target_allrings[2] +1 << " moved back" << endl;
-						}
-						else if (target_allrings.size() == 2)
-						{
-							if(state_obj.getStatus() == "1back")
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1);
-								state_obj.setRing(target_allrings[1], 1);
-								state_obj.setStatus("2bac");
-							}
-							else if (state_obj.getStatus() == "2bac")
-							{
-								state_obj.update_state(state_obj.getState());
-							}
-							else
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1);
-								state_obj.setRing(target_allrings[1], 1);
-								state_obj.setStatus("2bac");
-							}
-							outs1 << " Some motion in mask but ring "<< target_allrings[0] +1 << " and ring " << target_allrings[1] +1 << " moved back";
-							putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-							//cout << " Some motion in mask but ring "<< target_allrings[0] +1 << " and ring " << target_allrings[1] +1 << " moved back" << endl;
-						}
-						else if (target_allrings.size() == 1)
-						{
-							//state_obj.setRing(target_norings[0], 0); 
-							if(state_obj.getStatus() == "Allringsmoved")
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1); 
-								state_obj.setStatus("1back");
+					if (state_obj.getStatus() == "4b")
+					{
+						state_obj.setAllRings(2);
+						state_obj.setRing(target_allrings[0], 1);
+						state_obj.setRing(target_allrings[1], 1);
+						state_obj.setRing(target_allrings[2], 1);
+						state_obj.setRing(target_allrings[3], 1);
+						state_obj.setRing(target_allrings[4], 1);
+						state_obj.setStatus("5");
+					}
+					else if (state_obj.getStatus() == "5")
+					{
+						state_obj.update_state(state_obj.getState());
+					}
+					else
+					{
+						state_obj.setAllRings(2);
+						state_obj.setRing(target_allrings[0], 1);
+						state_obj.setRing(target_allrings[1], 1);
+						state_obj.setRing(target_allrings[2], 1);
+						state_obj.setRing(target_allrings[3], 1);
+						state_obj.setRing(target_allrings[4], 1);
+						state_obj.setStatus("5");
+					}
+					outs1 << " No motion in mask but rings " << target_allrings[0] + 1 << " , " << target_allrings[1] + 1 << " , " << target_allrings[2] + 1 << " , " << target_allrings[3] + 1 << " and " << target_allrings[4] + 1 << " moved back";
+					putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
+					//cout << " No motion in mask but rings "<< target_allrings[0] +1 << " , " << target_allrings[1] +1 <<  " , " << target_allrings[2] +1 << " , " << target_allrings[3] +1 << " and " << target_allrings[4] +1 << " moved back" << endl;
 
-							}
-							else if (state_obj.getStatus() == "1back")
-							{
-								state_obj.update_state(state_obj.getState());
-							}
-							else
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1); 
-								state_obj.setStatus("1back");
-							}
-							outs1 << " Some motion in masks but ring "<<  target_allrings[0]+1 <<" moved back";
-							putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-							//cout << " Some motion in masks but ring "<<  target_allrings[0]+1 <<" moved back" << endl;
-						}
-						else
-						{
-							if(state_obj.getStatus() == "Allringsmoved")
-							{
-								outs1 << " Some motion in masks but no ring moved";
-								putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-								//cout << " Some motion in masks but no ring moved" << endl;
-							}
-							else
-							{
-								state_obj.update_state(state_obj.getState());
-								outs1 << " Some motion in masks but no ring moved";
-								putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-								//cout << " Some motion in masks but no ring moved" << endl;
-							}
-						}
-						break;
-					case 4:
-						if (target_allrings.size() == 2)
-						{
-							if(state_obj.getStatus() == "1back")
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1);
-								state_obj.setRing(target_allrings[1], 1);
-								state_obj.setStatus("2bac");
-							}
-							else if(state_obj.getStatus() == "2bac")
-							{
-								state_obj.update_state(state_obj.getState());
-							}
-							else
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1);
-								state_obj.setRing(target_allrings[1], 1);
-								state_obj.setStatus("2bac");
-							}
-							outs1 << " No motion in mask but ring "<< target_allrings[0] +1 << " and ring " << target_allrings[1] +1 << " moved back";
-							putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-							//cout << " No motion in mask but ring "<< target_allrings[0] +1 << " and ring " << target_allrings[1] +1 << " moved back" << endl;
-						}
-						else if (target_allrings.size() == 1)
-						{
-							//state_obj.setRing(target_norings[0], 0); 
-							if(state_obj.getStatus() == "Allringsmoved")
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1); 
-								state_obj.setStatus("1back");
-
-							}
-							else if (state_obj.getStatus() == "1back")
-							{
-								state_obj.update_state(state_obj.getState());
-							}
-							else
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1); 
-								state_obj.setStatus("1back");
-							}
-							outs1 << " Some motion in masks but ring "<<  target_allrings[0]+1 <<" moved back";
-							putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-							//cout << " Some motion in masks but ring "<<  target_allrings[0]+1 <<" moved back" << endl;
-						}
-						else
-						{
-							if(state_obj.getStatus() == "Allringsmoved")
-							{
-								outs1 << " Some motion in masks but no ring moved" ;
-								putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-								//cout << " Some motion in masks but no ring moved" << endl;
-							}
-							else
-							{
-								state_obj.setAllRings(2); 
-								state_obj.setStatus("Allringsmoved");
-								outs1 << " Some motion in masks but no ring moved" ;
-								putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-								//cout << " Some motion in masks but no ring moved" << endl;
-							}
-						}
-						break;
-					case 5:
-						if (target_allrings.size() == 1)
-						{
-							//state_obj.setRing(target_norings[0], 0); 
-							if(state_obj.getStatus() == "Allringsmoved")
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1); 
-								state_obj.setStatus("1back");
-							}
-							else if (state_obj.getStatus() == "1back")
-							{
-								state_obj.update_state(state_obj.getState());
-							}
-							else
-							{
-								state_obj.setAllRings(2);
-								state_obj.setRing(target_allrings[0], 1); 
-								state_obj.setStatus("1back");
-							}
-							outs1 << " No motion in masks but ring"<<  target_allrings[0]+1 <<" moved back" ;
-							putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-							//cout << " No motion in masks but ring"<<  target_allrings[0]+1 <<" moved back" << endl;
-						}
-						else
-						{
-							if(state_obj.getStatus() == "Allringsmoved")
-							{
-								outs1 << " Some motion in masks but no ring moved" ;
-								putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-								//cout << " Some motion in masks but no ring moved" << endl;
-							}
-							else
-							{
-								state_obj.setAllRings(2); 
-								state_obj.setStatus("Allringsmoved");
-								outs1 << " Some motion in masks but no ring moved" ;
-								putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-								//cout << " Some motion in masks but no ring moved" << endl;
-							}
-						}
-						break;
-					case 6:
-						if (target_allrings.size() == 0)
-						{
-							if(state_obj.getStatus() == "Allringsmoved")
-							{
-								//state_obj.setAllRings(1); 
-								state_obj.setStatus("Allringsmoved");
-							}
-							//state_obj.setStatus("Stationary");
-							outs1 << "All rings moved" ;
-							putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
-							//cout << "All rings moved" << endl;
-						}
-						break;
+					break;
+				case 6:
+					if (state_obj.getStatus() == "5")
+					{
+						state_obj.setAllRings(1);
+						state_obj.setStatus("Stationary");
+						forward = true;
+					}
+					else
+					{
+						state_obj.update_state(state_obj.getState());
+					}
+					outs1 << " All rings moved back";
+					putText(frame, outs1.str(), textOrg, 0, 0.8, cv::Scalar(0, 0, 255), 1, 8, false);
+					//cout << " All rings moved back" << endl;
+					break;
 
 				}
 
@@ -1418,13 +704,14 @@ void ToolsTrackingApp::run()
 
 
 		imshow("Out2", frame);
-		string outfilename = "E:\\Official\\IITD\\computer vision\\Assignments\\Programs\\opencv\\endo_tracking\\data\\output\\Img_" + SSTR( p+1 ) + ".png";
-		imwrite(outfilename, frame);
-		p++;
+		//string outfilename = "E:\\Official\\IITD\\computer vision\\Assignments\\Programs\\opencv\\endo_tracking\\data\\output\\Img_" + SSTR( p+1 ) + ".png";
+		//imwrite(outfilename, frame);
+		//p++;
 
 		if (!contour_tool.empty())
 		{
 			// Show the tool
+			state_obj.setTool(1);
 			Vec4f lines;
 			cv::fitLine(Mat(contour_tool), lines, 2, 0, 0.01, 0.01);
 			//int lefty = ((-lines[2]) * lines[1] / lines[0]) + lines[3];
@@ -1453,14 +740,51 @@ void ToolsTrackingApp::run()
 			//cv::line(mask_tool, Point(mask_tool.cols - 1, righty), Point(0, righty), Scalar(0, 255, 0), 2);
 
 			cv::line(mask_tool, Point(lines[2], lines[3]), Point(lines[2] + lines[0] * 100, lines[3] + lines[1] * 100), Scalar(0, 255, 0), 2);
-			string outfilename2 = "E:\\Official\\IITD\\computer vision\\Assignments\\Programs\\opencv\\endo_tracking\\data\\output_1\\Img_" + SSTR( q+1 ) + ".png";
-			imwrite(outfilename2, mask_tool);
+			//string outfilename2 = "E:\\Official\\IITD\\computer vision\\Assignments\\Programs\\opencv\\endo_tracking\\data\\output_1\\Img_" + SSTR( q+1 ) + ".png";
+			//imwrite(outfilename2, mask_tool);
 			q++;
-			//imshow("test1", mask_tool);
+			imshow("test1", mask_tool);
 			
 			contour_tools.clear();
 
 		}
+		else
+		{
+			state_obj.setTool(0);
+			//if (count == 825)
+			//{
+			//	//string outfilename = "E:\\Official\\IITD\\computer vision\\Assignments\\Programs\\opencv\\endo_tracking\\data\\output\\Mask_" + SSTR( p+1 ) + ".png";
+			//	//p++;
+			//	vector<Mat> total_ring_mask;
+			//	vector<Point> centre;
+			//	vector<double> radius;
+			//    vector<Rect> roi; 
+			//	bool notfirst = false;
+			//	ring_mask(mask_rings,  roi, centre, radius, notfirst);
+			//	string outfilename = "E:\\Official\\IITD\\computer vision\\Assignments\\Programs\\opencv\\endo_tracking\\data\\output\\Mask_roi.txt";
+			//	ofstream myfile(outfilename);
+
+			//	for (int i = 0; i < 6; i ++)
+			//	{
+			//		//ring_masks.push_back(rings[i].getRing_mask()); 
+			//		Rect ring_roi = rings[i].getRoi();
+			//		
+			//		if (myfile.is_open())
+			//		{
+			//			//myfile << "This is a line.\n";
+			//			myfile << "Roi  " << ring_roi << endl;
+			//			
+			//		}
+			//		else cout << "Unable to open file";
+			//		
+			//		p++;
+			//		//Mat imgRoi = mask_rings(roi[i]);
+			//		//imwrite(outfilename, imgRoi);
+			//	}
+			//	myfile.close();
+			//}
+		}
+
 		key = waitKey(20);
 		keyboardEvent(key);
 	}
@@ -1483,49 +807,150 @@ void ToolsTrackingApp::keyboardEvent(char key)
 	}
 }
 
-bool ToolsTrackingApp::segmentation_tool(const cv::Mat &frame, vector<Point> &contour_tool, int *max_y)
+bool ToolsTrackingApp::segmentation_tool(const cv::Mat &frame, vector<Point> &contour_tool, int *max_y, Mat &mask_final)
 {
 	//Get the contours for processing
 	vector<vector<Point> > contours;
 	vector<Vec4i> hierarchy;
 
-	pMOG->operator()(frame, fgMask);
+	
+
+	pMOG->operator()(frame, fgMask, 0.0);
+	
 	erode(fgMask, fgMask, element[0]);
 	erode(fgMask, fgMask, element[0]);
 	dilate(fgMask, fgMask, element[1]);
 	dilate(fgMask, fgMask, element[1]);
 	dilate(fgMask, fgMask, element[1]);
 
+	//Mat mask(frame.size(), CV_8UC1);
+	Mat mask_t = Mat::zeros(frame.rows, frame.cols, CV_8UC1);
+	mask_t = fgMask.clone();
 
-	Mat mask = fgMask.clone();
-	frame.copyTo(temp_mat, mask);
 
-	Mat hsv, maskring1;
-	cvtColor(temp_mat, hsv, CV_BGR2HSV);
+	Mat temp_image = Mat::zeros(frame.rows, frame.cols, CV_8UC3);
+	frame.copyTo(temp_image, mask_t);
 
+	//imshow ("Temporary image", temp_image);
+	Mat hsv, maskring1, maskhole;
+	cvtColor(temp_image, hsv, CV_BGR2HSV);
+
+
+	
 	Mat channel[3];
 	split(hsv, channel);
+	//cvCopy(frame,moving_tool,mask);
 
+	Mat moving_ring = Mat::zeros(frame.rows, frame.cols, CV_8UC1);
+	Mat moving_tool = Mat::zeros(frame.rows, frame.cols, CV_8UC1);
+
+	//cvtColor(temp_mat, hsv, CV_BGR2HSV);
+	//moving_tool = channel[0] & mask;
+
+	//imshow("Moving tool", moving_tool);
 	// Get only the tool from the moving foreground ( It also contains the rings)// I have kept the rings red here
 	// It also contains the endoscope. Need to separate that as well
-
 
 	threshold(channel[0], maskring1, 10, 255, THRESH_TOZERO_INV); //b1((b1 >= T))= 0; 
 	threshold(maskring1, maskring1, 1, 255, THRESH_BINARY); //b1((b1 > 0))= 255;
 
+	//threshold(channel[2], maskhole, 100, 255, THRESH_TOZERO_INV);
+	//threshold(maskhole, maskhole, 1, 255, THRESH_BINARY); //b1((b1 > 0))= 255;
+
 	erode(maskring1, maskring1, element[0]);
 	erode(maskring1, maskring1, element[0]);
 	dilate(maskring1, maskring1, element[1]);
 	dilate(maskring1, maskring1, element[1]);
 	dilate(maskring1, maskring1, element[1]);
 
+	//moving_ring = maskring1 & mask;
+	//maskring1.copyTo(moving_ring, mask);
+	//imshow("Hole mask", maskhole);
 
-	mask -= maskring1;
 
-	erode(mask, mask, element[0]);
-	erode(mask, mask, element[0]);
+	//imshow("Moving ring", moving_ring);
+	/*Mat temp_image2 = Mat::zeros(frame.rows, frame.cols, CV_8UC3);
+	temp_image.copyTo(temp_image2, moving_ring);
 
-	findContours(mask, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, Point(0, 0));
+	
+	imshow("Tool and ring only", temp_image2);*/
+
+	//Mat canny_output;
+	//vector<vector<Point> > contours;
+	//vector<Vec4i> hierarchy;
+	//int thresh = 50;
+
+	//cvFillHoles(difference_gray);
+
+	/// Detect edges using canny
+
+	/*Canny( temp_image, canny_output, thresh, thresh*4, 3 );
+
+
+	normalize(canny_output, canny_output, 0, 1, cv::NORM_MINMAX);
+	Mat kernel = (Mat_<uchar>(3,3) << 0, 1, 0, 1, 1, 1, 0, 1, 0);
+	Mat dst;
+	dilate(canny_output, dst, kernel);
+	dilate(dst, dst, kernel);
+
+	normalize(dst, dst, 0, 255, cv::NORM_MINMAX);*/
+
+
+	mask_t -= maskring1;
+	vector <Mat> rings_out;
+
+
+	//for(int i = 0; i < rings.size(); i ++)
+	//{
+	//	//Vector <Mat> ringmask = rings[i].ring_mask();
+	//}
+	//mask -= maskhole;
+
+	erode(mask_t, mask_t, element[0]);
+	erode(mask_t, mask_t, element[0]);
+
+	if (!rings.empty())
+	{
+		vector<double> gray_sum;
+		for (int i = 0; i < 6; i ++)
+		{
+
+			//Mat current_ring_mask = rings[i].getRing_mask();
+			//Mat maskofhole = current_ring_mask & mask_t;
+
+
+			Rect ring_roi = rings[i].getRoi();
+			Mat maskofff = mask_t(ring_roi);
+			
+
+			Mat new_mask(mask_t.size(), CV_8UC1, Scalar::all(0));
+			//Mat imageROI(draw_rings.size(), CV_8UC1, Scalar::all(0));
+			Mat imageROI = new_mask.clone(); // 'image' is the image you used to compute the contours.
+			////ring_mask = imageROI(roi).setTo(Scalar(255));
+			imageROI(ring_roi).setTo(Scalar::all(255));
+			new_mask = mask_t & imageROI;
+
+
+
+			//rings_out.push_back(current_ring_mask & mask_t);
+			imshow(" current ring mask", new_mask);
+			//waitKey();
+			gray_sum.push_back(sum(sum(new_mask)).val[0]);
+
+			if (gray_sum[i] > 1.4e6)
+			{
+				mask_t -= new_mask;
+			}
+			//cout <<"Sum of mask "<< gray_sum[i] << endl;
+
+			//outStream << 0 << "\t" << gray_sum[i] << endl;
+		}
+	}
+
+	//imshow("Mask Updated",mask_t); 
+
+	mask_final = mask_t.clone();
+	findContours(mask_t, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, Point(0, 0));
 	unsigned int contour_toolSize = contours.size();
 	vector<vector<Point> > found_contours;
 	vector<int> max_yy;

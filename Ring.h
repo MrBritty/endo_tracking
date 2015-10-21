@@ -12,14 +12,16 @@ class Ring
 {
 public:
 	Ring();
-	Ring(const Point2f&, float, const Mat&);
+	Ring(const Point2f&, float, const Rect&);
 	Point2f getCenter();
 	float getRadii();
-	Mat getRing_mask();
+	//Mat getRing_mask();
+	Rect getRoi();
 protected:
 	Point2f center;
 	float  radius;
-	Mat ring_mask;
+	//Mat ring_mask;
+	Rect roi;
 };
 
 #endif

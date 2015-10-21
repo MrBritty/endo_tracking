@@ -116,8 +116,8 @@ void calculateHistogram(Mat image, Mat channel[3])
 
 
 /**
- * @function Hist_and_Backproj
- */
+* @function Hist_and_Backproj
+*/
 
 
 int main(int argc, char* argv[])
@@ -129,6 +129,69 @@ int main(int argc, char* argv[])
 	toolsTracking.run();
 
 
+	//// sample for back ground subtraction
+	//cv::VideoCapture capture;
+	//cv::VideoWriter outputVideo;
+	//cv::BackgroundSubtractor* pMOG;
+	//cv::Mat element[4];
+	//Mat frame, fgMask;
+	//capture.open(vidFile.c_str());
 
+	//if (!capture.isOpened()) 
+	//{
+	//	cerr << "Unable to open video file: " << vidFile.c_str() << endl;
+	//	return -1;
+	//}
+
+	//// Get the moving foreground properly
+	//pMOG = new BackgroundSubtractorMOG2(-20, 200, false);
+	//element[0] = getStructuringElement(MORPH_CROSS, Size(5, 5), Point(0, 0));
+	//element[1] = getStructuringElement(MORPH_ELLIPSE, Size(8, 8), Point(0, 0));
+	//element[2] = getStructuringElement(MORPH_ELLIPSE, Size(3, 3), Point(0, 0));
+	//element[3] = getStructuringElement(MORPH_ELLIPSE, Size(3, 3), Point(0, 0));
+	//for(;;)
+	//{
+
+	//	capture >> frame;
+
+	//	imshow("frame", frame);
+
+	//	if( frame.empty() )
+	//		break;
+	//	Mat src_gray, dst, erosion_dst, dilate_dst;
+	//	cvtColor(frame, src_gray, COLOR_BGR2GRAY);
+
+
+
+	//	if( fgMask.empty() )
+	//		fgMask.create(frame.size(), frame.type());
+
+
+	//	pMOG->operator()(frame, fgMask, -1);
+
+	//	/*erode(fgMask, fgMask, element[0]);
+	//	erode(fgMask, fgMask, element[0]);
+	//	dilate(fgMask, fgMask, element[1]);
+	//	dilate(fgMask, fgMask, element[1]);
+	//	dilate(fgMask, fgMask, element[1]);
+	//	*/
+	//	//Mat mask(frame.size(), CV_8UC1);
+	//	Mat mask_t = Mat::zeros(frame.rows, frame.cols, CV_8UC1);
+	//	mask_t = fgMask.clone();
+
+
+	//	//Mat temp_image = Mat::zeros(frame.rows, frame.cols, CV_8UC3);
+	//	//frame.copyTo(temp_image, mask_t);
+
+	//	//imshow ("Temporary image", temp_image);
+	//	/*Mat hsv, maskring1, maskhole;
+	//	cvtColor(temp_image, hsv, CV_BGR2HSV);
+
+	//	Mat channel[3];
+	//	split(hsv, channel);
+	//	*/
+	//	imshow("mask", mask_t);
+	//	waitKey(10);
+	//}
 
 }

@@ -42,12 +42,15 @@ public:
 
 private:
   //Apply background substraction and denoising
-	bool segmentation_tool(const cv::Mat &, vector<Point> &, int *);
+	bool segmentation_tool(const cv::Mat &, vector<Point> &, int *, Mat &);
 	void segmentation_ring(const vector<Point> &contour_tool, Mat& mask_ring);
   
   //True is contour is noise (too small...)
   bool isNotAContour(ContourFeature&, int);
   bool isNotARing(ContourFeature&, int);
+
+  //get the ring masks separately
+  void ring_mask(const Mat& mask_ring,  vector<Rect> &roi,	vector<Point> &centre, vector<double> &radius, bool first);
   
   //floats<->integers array converters
   void convertToFloat(const vector<Point>&, vector<Point2f>&);
@@ -68,7 +71,8 @@ private:
   cv::BackgroundSubtractor* pMOG;
     
   cv::Mat element[4];
-
+  vector <Ring> rings;
+  vector <Ring> rings_final;
   cv::Mat frame;
   cv::Mat fgMask;
   cv::Mat gray;

@@ -1,11 +1,11 @@
 #include "Ring.h"
 
 
-Ring::Ring() :center(Point2f(0, 0)), radius(0), ring_mask()
+Ring::Ring() :center(Point2f(0, 0)), radius(0), roi()
 {
 }
 
-Ring::Ring(const Point2f & cen, float radi, const Mat & mask) : center(cen), radius(radi), ring_mask(mask)
+Ring::Ring(const Point2f & cen, float radi, const Rect & region) : center(cen), radius(radi),  roi(region)
 {
 }
 
@@ -19,10 +19,15 @@ float Ring::getRadii()
 {
 	return this->radius;
 }
+//
+//Mat Ring::getRing_mask()
+//{
+//	return this->ring_mask; 
+//}
 
-Mat Ring::getRing_mask()
+Rect Ring::getRoi()
 {
-	return this->ring_mask; 
+	return this->roi;
 }
 
 
